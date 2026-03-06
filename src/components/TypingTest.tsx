@@ -75,7 +75,7 @@ export default function TypingTest() {
   const [dark, setDark] = useState(true);
   const t = dark ? themes.dark : themes.light;
 
-  const [selectedText, setSelectedText] = useState<TextEntry>(albanianTexts[0]);
+  const [selectedText, setSelectedText] = useState<TextEntry>(() => albanianTexts[Math.floor(Math.random() * albanianTexts.length)]);
   const [duration, setDuration] = useState<Duration>(60);
   const [difficulty, setDifficulty] = useState<"all" | "easy" | "medium" | "hard">("all");
   const [chars, setChars] = useState<CharData[]>([]);
@@ -134,9 +134,23 @@ export default function TypingTest() {
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (finished) return;
-      if (e.key === "Tab") { e.preventDefault(); handleRestart(); }
+      if (e.key === "Tab") { e.preventDefault(); handleRestart(); return; }
+      if (e.key === "Backspace") {
+        e.preventDefault();
+        if (currentIndex === 0) return;
+        setChars((prev) => {
+          const next = [...prev];
+          const prevIdx = currentIndex - 1;
+          if (next[prevIdx].state === "correct") setCorrectCount((c) => Math.max(0, c - 1));
+          else if (next[prevIdx].state === "incorrect") setIncorrectCount((c) => Math.max(0, c - 1));
+          next[prevIdx].state = "current";
+          next[currentIndex].state = "idle";
+          setCurrentIndex(prevIdx);
+          return next;
+        });
+      }
     },
-    [finished] // eslint-disable-line react-hooks/exhaustive-deps
+    [finished, currentIndex] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const handleInput = useCallback(
@@ -147,6 +161,42 @@ export default function TypingTest() {
       const typedChar = value[value.length - 1];
       e.target.value = "";
       if (!started) setStarted(true);
+
+      if (typedChar === " ") {
+        setChars((prev) => {
+          const next = [...prev];
+          let idx = currentIndex;
+          if (next[idx].char === " ") {
+            // already at a space — mark correct and advance
+            next[idx].state = "correct";
+            setCorrectCount((c) => c + 1);
+            idx++;
+          } else {
+            // skip remaining chars of current word, marking as incorrect
+            while (idx < next.length && next[idx].char !== " ") {
+              next[idx].state = "incorrect";
+              setIncorrectCount((c) => c + 1);
+              idx++;
+            }
+            // consume the space
+            if (idx < next.length && next[idx].char === " ") {
+              next[idx].state = "correct";
+              setCorrectCount((c) => c + 1);
+              idx++;
+            }
+          }
+          if (idx >= next.length) {
+            setFinished(true);
+            if (timerRef.current) clearInterval(timerRef.current);
+          } else {
+            next[idx].state = "current";
+            setCurrentIndex(idx);
+          }
+          return next;
+        });
+        return;
+      }
+
       setChars((prev) => {
         const next = [...prev];
         const idx = currentIndex;
